@@ -1,6 +1,5 @@
 # IMAW: Isomorphic Multi-Agent Workflows
 
-![PyPI - Version](https://img.shields.io/pypi/v/imaw)
 ![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)
 ![Python Version](https://img.shields.io/badge/python-3.10+-blue.svg)
 
