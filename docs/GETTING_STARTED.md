@@ -24,7 +24,7 @@ The Isomorphic Multi-Agent Workflow (IMAW) is an orchestration layer for generat
 
 3. **Configure the API Key:**
    ```bash
-   export GEMINI_API_KEY="your-api-key-here"
+   export GOOGLE_GENAI_API_KEY="your-api-key-here"
    ```
 
 ## Running the Empirical Proof
