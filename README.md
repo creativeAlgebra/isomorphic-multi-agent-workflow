@@ -27,7 +27,7 @@ IMAW enforces strict **Contextual Blindness**. The workflow is physically separa
 
 ## Performance: The Empirical Proof
 
-In rigorous testing across multiple domains (Organizational Change, Global Supply Chain, Material Science), the monolithic LLMs (GPT-4o, Claude 3.5 Sonnet, Gemini 1.5 Pro) completely failed to prevent Contextual Leakage. 
+In rigorous testing across multiple domains (Organizational Change, Global Supply Chain, Material Science), the monolithic LLMs (GPT-4o, Claude 3.5 Sonnet, Gemini 3.1 Pro) completely failed to prevent Contextual Leakage. 
 
 The IMAW pipeline achieved absolute isolation, consistently scoring **100/100** for both Structural Fidelity and Contextual De-duplication.
 

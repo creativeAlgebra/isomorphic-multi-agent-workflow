@@ -26,7 +26,7 @@ class IMAWOrchestrator:
         mapping_json = map_isomorphism(abstract_schema_json, target_metaphor)
         
         # Phase 3: Synthesized output
-        final_lesson = synthesize_lesson(source_concept, target_metaphor, mapping_json)
+        final_lesson = synthesize_lesson(target_metaphor, mapping_json)
         
         return {
             "lesson": final_lesson,
