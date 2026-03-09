@@ -40,6 +40,7 @@ Evaluate the generated output on two specific metrics. Provide a JSON response w
 1. "contextual_leakage_score": (0 to 100). Higher is better. 100 means zero technical jargon "leaked" into the metaphor. 0 means it failed completely to maintain the metaphorical disguise.
 2. "structural_fidelity_score": (0 to 100). Higher is better. 100 means every single operational rule and relationship from the technical source was perfectly mapped without omission or hallucination.
 3. "failure_diagnostics": A short string explaining specifically where and how the output failed (e.g., "Leaked the word 'node'", or "Missed the rule about scheduling"). If it scored 100 on both, say "Perfect adherence."
+4. "tagged_output": The exact original text of the "Generated Output", but MUST be rewritten to wrap any blatantly translated technical terms (like Node, Pod, CPU, etc) from the technical source in an XML tag: `<leak>term</leak>`. If no leakage occurred, return the original text unmodified.
 
 Return ONLY valid JSON.
 """
@@ -58,7 +59,8 @@ Return ONLY valid JSON.
         return {
             "contextual_leakage_score": 0,
             "structural_fidelity_score": 0,
-            "failure_diagnostics": "Failed to parse grading output."
+            "failure_diagnostics": "Failed to parse grading output.",
+            "tagged_output": text_to_grade
         }
 
 
