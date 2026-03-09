@@ -1,107 +1,34 @@
-# IMAW: Isomorphic Multi-Agent Workflows
+# Isomorphic Multi-Agent Workflow (IMAW)
 
-![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)
-![Python Version](https://img.shields.io/badge/python-3.10+-blue.svg)
+**Enterprise-grade framework for preventing structural corruption in AI-generated explanations.**
 
-**IMAW** is a cognitive Python framework designed to solve the "Expression-Structure Feedback Loop" (LLM Hallucination) during complex concept translation.
+[![Website](https://img.shields.io/badge/Website-imaw.creativealgebra.com-black)](https://creativealgebra.com)
+[![Status](https://img.shields.io/badge/Status-Experimental-yellow)](#)
 
-When standard Large Language Models (LLMs) are asked to explain dense technical, organizational, or logical concepts using creative metaphors, they inevitably suffer from cognitive overload—breaking the metaphor to insert technical jargon, or mutating the technical rules to fit the narrative.
+When AI maps complex knowledge onto metaphors, technical facts and creative narratives contaminate each other. IMAW is the architectural solution to this **Contextual Leakage**. By enforcing strict isolation through a 3-agent pipeline, IMAW guarantees mathematically rigid semantic firewalls, ensuring identical logic across discrete domains without hallucinating or leaking jargon.
 
-IMAW solves this by enforcing **Contextual Blindness** across a rigid, three-agent assembly line.
+## The Problem: The Monolith Trap
 
----
+Monolithic LLMs process structure and language in the same pass. When asked to translate a complex concept (e.g., Kubernetes architecture) into an analogous domain (e.g., Hotel Management), the original technical jargon inevitably "leaks" into the generated output. The result is a broken analogy—a "Hotel Desk (`kube-apiserver`)"—which breaks immersion and fails as a standalone pedagogical tool.
 
-## 🧠 The 3-Agent Architecture
+## The Solution: Generative Control Architecture
 
-The library physically separates logic extraction, analogical mapping, and pedagogical synthesis to guarantee 100% structural fidelity.
+IMAW enforces strict **Contextual Blindness**. The workflow is physically separated into three fiercely isolated agents:
 
-1.  **Agent 1: Decomposition (The Abstractor)**
-    *   Ingests complex technical source text.
-    *   Strips away all domain-specific vocabulary and context.
-    *   *Output:* Pure mathematical/relational rules (JSON).
-2.  **Agent 2: Mapping (The Translator)**
-    *   Ingests the sterile logic from Agent 1.
-    *   Maps the logic 1:1 onto a new Target Metaphor.
-    *   *Constraint:* Operates completely blind to the original source text.
-3.  **Agent 3: Synthesis (The Storyteller)**
-    *   Synthesizes the final educational narrative.
-    *   *Constraint:* Strictly bound by the mathematically verified mapping generated in Step 2.
+1.  **Decomposition (Agent 1):** Extracts pure structural logic (Entities, Relationships, Rules) into an abstract JSON schema. *Blind to the target metaphor.*
+2.  **Mapping (Agent 2):** Builds a 1:1 mathematical dictionary translating abstract entities to the new metaphor domain. *Blind to the original source text.*
+3.  **Synthesis (Agent 3):** Assembles the final narrative using ONLY the target metaphor and the mapped logic rules. *Zero chance of leakage.*
 
-## 📦 Installation
+## Documentation
 
-*(Pending PyPI Publication)*
+- [Getting Started](docs/GETTING_STARTED.md): Quickstart guide and API setup.
+- [Architecture Details](docs/ARCHITECTURE.md): Deep dive into the 3-Agent methodology.
+- [Full Research Paper](paper.md): Read the complete theoretical framework and empirical proof.
 
-For now, you can install the library locally for development:
+## Performance: The Empirical Proof
 
-```bash
-git clone https://github.com/your-org/imaw.git
-cd imaw
-pip install -e .
-```
+In rigorous testing across multiple domains (Organizational Change, Global Supply Chain, Material Science), the monolithic LLMs (GPT-4o, Claude 3.5 Sonnet, Gemini 1.5 Pro) completely failed to prevent Contextual Leakage. 
 
-Ensure you have your Google GenAI API key configured:
-```bash
-export GOOGLE_GENAI_API_KEY="your_api_key_here"
-```
+The IMAW pipeline achieved absolute isolation, consistently scoring **100/100** for both Structural Fidelity and Contextual De-duplication.
 
-## 🚀 Quickstart
-
-IMAW supports both static generation (Phase 1) and stateful conversational tutors (Phase 2).
-
-### 1. Generate a Static Lesson
-
-```python
-import imaw
-
-# A complex source concept
-source = """
-The TCP/IP Three-Way Handshake establishes a reliable connection.
-Step 1: Client sends SYN.
-Step 2: Server receives SYN, replies with SYN-ACK.
-Step 3: Client receives SYN-ACK, replies with ACK. Connection established.
-"""
-
-# A wildly different target metaphor
-metaphor = "Formal 18th-century ballroom diplomacy."
-
-# Run the 3-Agent Pipeline
-print("Processing Decomposition, Mapping, and Synthesis...")
-results = imaw.IMAWOrchestrator.generate_lesson(source_concept=source, target_metaphor=metaphor)
-
-print(results["lesson"])
-```
-
-### 2. The Isomorphic Conversational Tutor
-
-Maintain the isomorphic illusion in a live chat by utilizing the Double-Translation Loop.
-
-```python
-import imaw
-
-# Assuming 'results' dictionary from the static generation above...
-session = imaw.TutorSession(
-    source_concept=results["source"], 
-    target_metaphor=results["metaphor"],
-    abstract_schema=results["abstract_schema"], 
-    mapping=results["mapping"]
-)
-
-# Ask a question strictly within the metaphor
-tutor_reply = session.add_user_message("What happens if the second courier drops his parchment in a puddle?")
-print(tutor_reply)
-```
-
-## 🔬 Core Validation
-
-IMAW has been empirically validated to maintain structural fidelity across diverse domains where monolithic zero-shot LLMs catastrophically fail:
-*   **Organizational Strategy:** Kotter's 8-Step Change Management
-*   **Computational Logistics:** Predictive Supply Chain AI
-*   **Physical Sciences:** Atmospheric Architecture and Thermal Dynamics
-
-## 🤝 Contributing
-
-We welcome contributions from the community. Please see `CONTRIBUTING.md` for guidelines on how to submit pull requests, report bugs, and suggest new features.
-
-## 📄 License
-
-This project is licensed under the MIT License - see the `LICENSE` file for details.
+*See `imaw_prototype/generate_evidence.py` to run the empirical test suite yourself.*
