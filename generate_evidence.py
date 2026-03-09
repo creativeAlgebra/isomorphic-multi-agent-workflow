@@ -110,6 +110,7 @@ def main():
     # JSON Data for frontend EvidenceViewer.jsx
     evidence_data = {
         "scenario": "Kubernetes Cluster Architecture",
+        "source_concept": source_concept,
         "metaphor": target_metaphor,
         "standard_llm": {
             "raw_output": standard_lesson,
