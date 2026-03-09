@@ -21,7 +21,10 @@ def synthesize_lesson(target_metaphor: str, mapping_json: str) -> str:
     prompt = (
         f"The Chosen Target Metaphor:\n{target_metaphor}\n\n"
         f"The Structural Isomorphic Mapping:\n{mapping_json}\n\n"
-        "Synthesize the final pedagogical artifact natively in Markdown format."
+        "Synthesize the final pedagogical artifact natively in Markdown format.\n"
+        "CRITICAL UX REQUIREMENT: At the very bottom of the artifact, you MUST append a section titled '### Suggested Exploration Questions'. "
+        "Provide exactly 3 thought-provoking questions phrased ENTIRELY within the rules of the target metaphor. "
+        "These questions should prompt the user to stress-test the simulation (e.g., 'What happens if [X event] occurs?')."
     )
     
     config.system_instruction = system_instruction
