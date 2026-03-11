@@ -36,8 +36,8 @@ We are particularly interested in enhancements surrounding:
 ## Development Setup
 
 ```bash
-git clone https://github.com/your-org/imaw.git
-cd imaw
+git clone https://github.com/creativeAlgebra/isomorphic-multi-agent-workflow.git
+cd isomorphic-multi-agent-workflow
 python -m venv venv
 source venv/bin/activate
 pip install -e .
