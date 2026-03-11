@@ -40,19 +40,22 @@ except ImportError:
 
 # ── IMAW Engine Imports ───────────────────────────────────────────────────
 import imaw
+from agents import PROVIDERS as PROVIDER_REGISTRY, configure as configure_provider
 
 # ── Constants ─────────────────────────────────────────────────────────────
 VERSION = imaw.__version__
 
-AMBER = "#D4845A"
+AMBER = "#E8722A"
 
 LOGO = """
- ██╗███╗   ███╗ █████╗ ██╗    ██╗
- ██║████╗ ████║██╔══██╗██║    ██║
- ██║██╔████╔██║███████║██║ █╗ ██║
- ██║██║╚██╔╝██║██╔══██║██║███╗██║
- ██║██║ ╚═╝ ██║██║  ██║╚███╔███╔╝
- ╚═╝╚═╝     ╚═╝╚═╝  ╚═╝ ╚══╝╚══╝
+ ██╗   ███╗   ███╗    █████╗    ██╗    ██╗
+ ██║   ████╗ ████║   ██╔══██╗   ██║    ██║
+ ██║   ██╔████╔██║   ███████║   ██║ █╗ ██║
+ ██║   ██║╚██╔╝██║   ██╔══██║   ██║███╗██║
+ ██║   ██║ ╚═╝ ██║   ██║  ██║   ╚███╔███╔╝
+ ╚═╝   ╚═╝     ╚═╝   ╚═╝  ╚═╝    ╚══╝╚══╝
+
+
 """
 
 DEMO_SOURCE = (
@@ -75,9 +78,9 @@ if HAS_RICH:
         "warning": "bold yellow",
         "danger": "bold red",
         "success": "bold green",
-        "muted": "dim white",
-        "highlight": "bold white",
-        "agent": "bold magenta",
+        "muted": "dark_red",
+        "highlight": "bold #E8722A",
+        "agent": "bold white",
     })
     console = Console(theme=custom_theme)
 else:
@@ -148,8 +151,8 @@ def run_with_dots(label: str, quip_key: str, func, *args, **kwargs):
     t = threading.Thread(target=worker, daemon=True)
     t.start()
 
-    # ANSI colors: bold magenta for label, bold white for text, bright cyan for dots
-    MAGENTA = "\033[1;35m"
+    # ANSI colors: bold orange for label, bold white for text, bright cyan for dots
+    ORANGE = "\033[38;2;232;114;42m"
     WHITE = "\033[1;37m"
     CYAN = "\033[1;96m"
     RESET = "\033[0m"
@@ -159,7 +162,7 @@ def run_with_dots(label: str, quip_key: str, func, *args, **kwargs):
     while not done.is_set():
         dots = dot_frames[frame % 4]
         pad = " " * (3 - len(dots))
-        line = f"\r  {MAGENTA}{label}{RESET}  {WHITE}{quip}{RESET} {CYAN}{dots}{pad}{RESET}"
+        line = f"\r  {ORANGE}{label}{RESET}  {WHITE}{quip}{RESET} {CYAN}{dots}{pad}{RESET}"
         sys.stdout.write(line)
         sys.stdout.flush()
         frame += 1
@@ -179,9 +182,97 @@ def clear_screen():
     os.system("cls" if os.name == "nt" else "clear")
 
 
-def check_api_key() -> bool:
-    """Returns True if the API key is set."""
-    return bool(os.environ.get("GOOGLE_GENAI_API_KEY"))
+def check_api_key(provider: str = None) -> bool:
+    """Returns True if the API key is set for the given (or any) provider."""
+    if provider:
+        info = PROVIDER_REGISTRY.get(provider, {})
+        return bool(os.environ.get(info.get('env_var', '')))
+    # Fallback: check all
+    return any(os.environ.get(p['env_var']) for p in PROVIDER_REGISTRY.values())
+
+
+def detect_providers() -> list:
+    """Return list of provider IDs that have API keys set in the environment."""
+    return [pid for pid, info in PROVIDER_REGISTRY.items() if os.environ.get(info['env_var'])]
+
+
+def select_provider() -> tuple:
+    """
+    Show all providers, let the user choose, and prompt for a key if needed.
+    Returns (provider_id, api_key).
+    """
+    provider_ids = list(PROVIDER_REGISTRY.keys())
+
+    # Build menu with status indicators
+    menu_lines = []
+    for idx, pid in enumerate(provider_ids, 1):
+        info = PROVIDER_REGISTRY[pid]
+        has_key = bool(os.environ.get(info['env_var']))
+        status = "[success]●[/success]" if (HAS_RICH and has_key) else ("[dim]○[/dim]" if HAS_RICH else ("●" if has_key else "○"))
+        label = info['label']
+        hint = "  [dim](key detected)[/dim]" if (HAS_RICH and has_key) else ("  (key detected)" if has_key else "")
+        menu_lines.append(f"  [{idx}]  {status}  {label}{hint}")
+
+    menu_text = "\n".join(menu_lines)
+
+    if HAS_RICH:
+        console.print(Panel(
+            menu_text,
+            title="[agent]Choose your AI provider[/agent]",
+            border_style=AMBER,
+            padding=(1, 2),
+        ))
+        console.print("[muted]  ● = API key detected   ○ = key needed[/muted]")
+    else:
+        print("\n  Choose your AI provider:\n")
+        print(menu_text)
+        print("\n  ● = API key detected   ○ = key needed")
+
+    while True:
+        pick = input("\n  Enter choice › ").strip()
+        try:
+            idx = int(pick) - 1
+            if 0 <= idx < len(provider_ids):
+                pid = provider_ids[idx]
+                info = PROVIDER_REGISTRY[pid]
+                api_key = os.environ.get(info['env_var'])
+
+                if not api_key:
+                    # Prompt for the key inline
+                    if HAS_RICH:
+                        console.print(f"\n  [{AMBER}]{info['label']} selected[/{AMBER}]")
+                        console.print(f"  [muted]Paste your API key below. It will be used for this session only.[/muted]")
+                        console.print(f"  [muted]To persist it, add to your shell profile:[/muted]")
+                        console.print(f"  [muted]  export {info['env_var']}='your-key'[/muted]")
+                    else:
+                        print(f"\n  {info['label']} selected")
+                        print(f"  Paste your API key below (session only).")
+                        print(f"  To persist: export {info['env_var']}='your-key'")
+
+                    key_input = input("\n  API Key › ").strip()
+                    if not key_input:
+                        if HAS_RICH:
+                            console.print("[warning]  No key entered. Try again.[/warning]")
+                        else:
+                            print("  No key entered. Try again.")
+                        continue
+
+                    # Set for current process
+                    os.environ[info['env_var']] = key_input
+                    api_key = key_input
+
+                    if HAS_RICH:
+                        console.print(f"  [success]✓ Key set for this session.[/success]")
+                    else:
+                        print(f"  ✓ Key set for this session.")
+
+                return pid, api_key
+        except ValueError:
+            pass
+        if HAS_RICH:
+            console.print(f"[warning]  Invalid choice. Enter 1-{len(provider_ids)}.[/warning]")
+        else:
+            print(f"  Invalid choice. Enter 1-{len(provider_ids)}.")
 
 
 def get_input(prompt_text: str, hint: str = "") -> str:
@@ -227,7 +318,7 @@ def run_pipeline_with_progress(source: str, target: str) -> dict:
             print(f"  {msg}")
 
     if HAS_RICH:
-        console.print(Rule("[agent]IMAW Pipeline[/agent]", style="magenta"))
+        console.print(Rule("[agent]IMAW Pipeline[/agent]", style=AMBER))
     else:
         print("\n── IMAW Pipeline ──")
 
@@ -305,7 +396,7 @@ def display_artifact(title: str, content: str, lang: str = "json"):
             renderable = Syntax(content, "json", theme="monokai", word_wrap=True)
         else:
             renderable = Text(content)
-        console.print(Panel(renderable, title=f"[agent]{title}[/agent]", border_style="magenta", padding=(1, 2)))
+        console.print(Panel(renderable, title=f"[agent]{title}[/agent]", border_style=AMBER, padding=(1, 2)))
     else:
         print(f"\n{'─' * 60}")
         print(f"  {title}")
@@ -348,38 +439,48 @@ def save_experiment(source: str, target: str, results: dict, chat_log: list | No
 # WELCOME SCREEN
 # ══════════════════════════════════════════════════════════════════════════
 
-def show_welcome():
+def show_welcome(active_provider: str = None):
     """Render the branded welcome + API key status in a single box."""
     clear_screen()
 
+    has_key = check_api_key(active_provider) if active_provider else check_api_key()
+    if active_provider:
+        info = PROVIDER_REGISTRY.get(active_provider, {})
+        provider_label = info.get('label', active_provider)
+        env_var = info.get('env_var', '')
+    else:
+        provider_label = 'any provider'
+        env_var = 'See README for env vars'
+
     if HAS_RICH:
         api_line = (
-            f"[green]●[/green] [{AMBER}]API Key detected[/{AMBER}]  [dim](GOOGLE_GENAI_API_KEY)[/dim]"
-            if check_api_key()
-            else f"[red]●[/red] [{AMBER}]No API Key found[/{AMBER}]  [dim]Set GOOGLE_GENAI_API_KEY[/dim]"
+            f"[green]●[/green] [{AMBER}]{provider_label} connected[/{AMBER}]  [white]({env_var})[/white]"
+            if has_key
+            else f"[red]●[/red] [{AMBER}]No API Key found[/{AMBER}]  [white]Set an API key env var[/white]"
         )
         box_content = (
             f"[bold {AMBER}]{LOGO}[/bold {AMBER}]"
             f"  [{AMBER}]Isomorphic Multi-Agent Workflow[/{AMBER}]\n"
-            f"  [dim]v{VERSION}  •  Contextual Blindness Engine[/dim]\n\n"
+            f"  [white]v{VERSION}  •  Generative Control Architecture[/white]\n\n"
             f"  {api_line}"
         )
         console.print(Panel(
             box_content,
             box=box.HEAVY,
             border_style=AMBER,
+            style="on grey3",
             expand=False,
             padding=(1, 4),
         ))
         print()
     else:
-        api_status = "● API Key detected (GOOGLE_GENAI_API_KEY)" if check_api_key() else "✗ No API Key — Set GOOGLE_GENAI_API_KEY"
+        api_status = f"● {provider_label} connected ({env_var})" if has_key else "✗ No API Key — Set an API key env var"
         print("┏" + "━" * 58 + "┓")
         for line in LOGO.strip().split("\n"):
             print(f"┃  {line:<56}┃")
         print(f"┃{'':58}┃")
         print(f"┃  {'Isomorphic Multi-Agent Workflow':<56}┃")
-        print(f"┃  {f'v{VERSION}  •  Contextual Blindness Engine':<56}┃")
+        print(f"┃  {f'v{VERSION}  •  Generative Control Architecture':<56}┃")
         print(f"┃{'':58}┃")
         print(f"┃  {api_status:<56}┃")
         print("┗" + "━" * 58 + "┛")
@@ -402,7 +503,7 @@ def main_menu() -> str:
         console.print(Panel(
             menu_text,
             title="[agent]What would you like to do?[/agent]",
-            border_style="magenta",
+            border_style=AMBER,
             padding=(1, 2),
         ))
     else:
@@ -432,7 +533,7 @@ def main_menu() -> str:
 def run_tutor_chat(source, target, results, chat_log):
     """Run the Double-Translation Loop chat session. Appends to chat_log in-place."""
     if HAS_RICH:
-        console.print(Rule("[agent]Isomorphic Tutor — Double-Translation Loop[/agent]", style="magenta"))
+        console.print(Rule("[agent]Isomorphic Tutor — Double-Translation Loop[/agent]", style=AMBER))
         console.print(
             "[info]The mapping structure is loaded in memory.\n"
             "Ask follow-up questions and the tutor will respond strictly within the metaphor.\n"
@@ -479,7 +580,7 @@ def run_tutor_chat(source, target, results, chat_log):
             console.print(Panel(
                 Markdown(reply),
                 title="[agent]Tutor[/agent]",
-                border_style="magenta",
+                border_style=AMBER,
                 padding=(1, 2),
             ))
         else:
@@ -514,7 +615,7 @@ def inspect_artifacts(source, target, results, chat_log):
             console.print(Panel(
                 menu_text,
                 title="[agent]Session Menu[/agent]",
-                border_style="magenta",
+                border_style=AMBER,
                 padding=(1, 2),
             ))
         else:
@@ -569,7 +670,7 @@ def inspect_artifacts(source, target, results, chat_log):
 def demo_mode():
     """Run the hardcoded example through the live pipeline."""
     if HAS_RICH:
-        console.print(Rule("[agent]Demo Mode[/agent]", style="magenta"))
+        console.print(Rule("[agent]Demo Mode[/agent]", style=AMBER))
         console.print(Panel(
             f"[highlight]Source:[/highlight] {DEMO_SOURCE}\n\n"
             f"[highlight]Target:[/highlight] {DEMO_TARGET}",
@@ -598,7 +699,7 @@ def demo_mode():
 def tutor_mode():
     """Full pipeline + Session Menu with artifacts, chat, and export."""
     if HAS_RICH:
-        console.print(Rule("[agent]Explore a Topic[/agent]", style="magenta"))
+        console.print(Rule("[agent]Explore a Topic[/agent]", style=AMBER))
     else:
         print("\n" + "=" * 60)
         print("  EXPLORE A TOPIC")
@@ -670,24 +771,28 @@ def main():
         print("[!] 'InquirerPy' not installed. Install with: pip install InquirerPy")
         print("    Running with numbered menus as fallback.\n")
 
-    while True:
-        show_welcome()
+    # ── Provider selection (runs once at startup) ──
+    active_provider = None
 
-        # Pre-flight: API key
-        if not check_api_key():
-            if HAS_RICH:
-                console.print(Panel(
-                    "[danger]GOOGLE_GENAI_API_KEY is not set.[/danger]\n\n"
-                    "[muted]export GOOGLE_GENAI_API_KEY='your-key-here'[/muted]",
-                    title="⚠️  Missing API Key",
-                    border_style="red",
-                    padding=(1, 2),
-                ))
-            else:
-                print("⚠️  GOOGLE_GENAI_API_KEY is not set.")
-                print("   export GOOGLE_GENAI_API_KEY='your-key-here'\n")
-            input("Press Enter to exit...")
-            sys.exit(1)
+    while True:
+        show_welcome(active_provider)
+
+        # First loop: detect & select provider
+        if active_provider is None:
+            provider_id, api_key = select_provider()
+
+            # Configure the engine
+            try:
+                configure_provider(provider=provider_id, api_key=api_key)
+                active_provider = provider_id
+                show_welcome(active_provider)  # Refresh with provider name
+            except Exception as e:
+                if HAS_RICH:
+                    console.print(f"[danger]Configuration error: {e}[/danger]")
+                else:
+                    print(f"Configuration error: {e}")
+                input("Press Enter to exit...")
+                sys.exit(1)
 
         try:
             choice = main_menu()

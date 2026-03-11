@@ -9,7 +9,7 @@
 </p>
 
 <p align="center">
-  <a href="https://creativealgebra.com"><img src="https://img.shields.io/badge/Website-creativealgebra.com-black" alt="Website"></a>
+  <a href="https://controlarc.com"><img src="https://img.shields.io/badge/Website-controlarc.com-black" alt="Website"></a>
   <a href="#"><img src="https://img.shields.io/badge/Status-Experimental-yellow" alt="Status"></a>
   <a href="LICENSE"><img src="https://img.shields.io/badge/License-MIT-blue" alt="License"></a>
   <a href="#"><img src="https://img.shields.io/badge/Python-3.10+-green" alt="Python 3.10+"></a>
@@ -33,14 +33,32 @@ python3 -m venv venv && source venv/bin/activate
 pip install -r requirements.txt
 pip install -e .
 
-# 4. Set your API key (Google Gemini)
-export GOOGLE_GENAI_API_KEY='your-key-here'
+# 4. Set your API key (pick ONE)
+export GOOGLE_GENAI_API_KEY='your-key-here'   # Google Gemini (default)
+# export OPENAI_API_KEY='sk-...'              # OpenAI
+# export ANTHROPIC_API_KEY='sk-ant-...'       # Anthropic
+# export GROQ_API_KEY='gsk_...'               # Groq (fast + free tier)
+# export MISTRAL_API_KEY='...'                # Mistral
+# export DEEPSEEK_API_KEY='...'               # DeepSeek
 
 # 5. Launch the CLI
 python cli.py
 ```
 
-That's it. The CLI will walk you through everything.
+That's it. The CLI will auto-detect your key and walk you through everything.
+
+## Supported Providers
+
+| Provider | Env Var | Default Model | Notes |
+|---|---|---|---|
+| Google Gemini | `GOOGLE_GENAI_API_KEY` | `gemini-2.5-pro` | Default, native structured output |
+| OpenAI | `OPENAI_API_KEY` | `gpt-4o` | JSON mode via response_format |
+| Anthropic | `ANTHROPIC_API_KEY` | `claude-sonnet-4-20250514` | JSON via system prompt |
+| Groq | `GROQ_API_KEY` | `llama-3.3-70b-versatile` | Blazing fast, free tier |
+| Mistral | `MISTRAL_API_KEY` | `mistral-large-latest` | OpenAI-compatible |
+| DeepSeek | `DEEPSEEK_API_KEY` | `deepseek-chat` | OpenAI-compatible |
+
+If multiple keys are set, the CLI will ask you to choose.
 
 ## What the CLI Does
 
