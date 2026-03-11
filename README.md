@@ -17,7 +17,7 @@
 
 ---
 
-When AI maps complex knowledge onto metaphors, technical facts and creative narratives contaminate each other — a phenomenon called **Contextual Leakage**. IMAW is the architectural solution. By enforcing strict isolation through a multi-agent pipeline, IMAW guarantees mathematically rigid semantic firewalls: identical logic across discrete domains, zero hallucinated jargon.
+When AI explains a complex system through a metaphor, source-domain jargon almost always leaks into the output — a phenomenon researchers call **semantic leakage**. The analogy starts well but breaks down as technical terms contaminate the narrative. Generative Control Architecture prevents this by splitting the translation across isolated agents, each blind to the others' domain vocabulary. The result is a metaphor with structural fidelity: you can reason inside it and trust what you find.
 
 ## Quickstart
 
@@ -57,7 +57,7 @@ After a pipeline run, the **Session Menu** lets you:
 - Continue exploring via the **Double-Translation Loop** tutor chat
 - Export the entire session to disk
 
-## Architecture: The 3+1 Agent Pipeline
+## Architecture: The Multi-Agent Pipeline
 
 The core insight is **Contextual Blindness** — physically separating the workflow so no single agent can cross-pollinate domains.
 
@@ -117,11 +117,13 @@ isomorphic-multi-agent-workflow/
 └── LICENSE                 # MIT
 ```
 
-## Empirical Results
+## Early Results
 
-In rigorous testing across multiple domains (Organizational Change, Global Supply Chain, Material Science), monolithic LLMs (GPT-4o, Claude 3.5 Sonnet, Gemini 2.0 Pro) completely failed to prevent Contextual Leakage.
+In initial testing across domains including Kubernetes architecture, Organizational Change, and Supply Chain logistics, a standard monolithic LLM prompt consistently exhibited Contextual Leakage — technical jargon bleeding into the metaphorical output.
 
-The IMAW pipeline achieved **absolute isolation**, consistently scoring **100/100** for both Structural Fidelity and Contextual De-duplication.
+The IMAW pipeline achieved **consistent isolation**, scoring **100/100** for Structural Fidelity in every test case. The architectural separation, not any single model's capability, is what enforces the constraint.
+
+> Testing has been conducted primarily on Gemini. We expect similar results across providers due to the pipeline's model-agnostic design, and are actively expanding validation.
 
 Run the evidence suite yourself:
 
