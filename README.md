@@ -98,9 +98,9 @@ The core insight is **Contextual Blindness** — physically separating the workf
 ```
 isomorphic-multi-agent-workflow/
 ├── cli.py                  # Interactive terminal UI (Rich + InquirerPy)
-├── main.py                 # Programmatic API entrypoint
 ├── setup.py                # pip install -e .
 ├── requirements.txt        # Runtime dependencies
+├── generate_evidence.py    # Empirical test suite (IMAW vs monolithic LLM)
 ├── agents/                 # Individual agent implementations
 │   ├── decomposition.py    # Agent 1 — structural extraction
 │   ├── mapping.py          # Agent 2 — isomorphic translation
@@ -113,7 +113,6 @@ isomorphic-multi-agent-workflow/
 ├── docs/
 │   ├── GETTING_STARTED.md  # Setup guide
 │   └── ARCHITECTURE.md     # Deep dive into methodology
-├── generate_evidence.py    # Empirical test suite
 ├── CONTRIBUTING.md         # How to contribute
 └── LICENSE                 # MIT
 ```
