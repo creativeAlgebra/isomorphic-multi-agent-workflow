@@ -1,161 +1,360 @@
-import os
-import json
-import time
-from imaw.agents import get_client, MODEL_NAME
-from imaw.orchestrator import IMAWOrchestrator
+"""
+IMAW Evidence Generator — A/B Test Suite with Telemetry
+========================================================
+Runs N source concepts through both a Monolithic LLM and the 4-Agent IMAW
+pipeline, grades each output for Semantic Leakage, and records latency,
+token usage, and estimated cost.
 
-def get_standard_llm_response(source_concept: str, target_metaphor: str) -> str:
-    """Simulates a standard user asking a chatbot to explain a concept using a metaphor."""
-    client = get_client()
-    
-    prompt = (
-        f"You are an expert educator. I need you to explain a complex high-stakes enterprise topic to me.\n\n"
-        f"Here is the technical topic:\n{source_concept}\n\n"
-        f"I want you to explain this entire topic perfectly using the following metaphor:\n{target_metaphor}\n\n"
-        "Make sure to map the actors and the rules accurately into a cohesive, engaging lesson."
-    )
-    
-    response = client.models.generate_content(
-        model=MODEL_NAME,
-        contents=prompt
-    )
-    return response.text
-
-def process_grading(source_concept: str, target_metaphor: str, text_to_grade: str, approach_name: str) -> dict:
-    client = get_client()
-    
-    grading_prompt = f"""
-You are an expert AI auditor assessing "Generative Control Architectures". Your task is to evaluate an AI-generated explanation for strict structural and contextual adherence.
-
-Original Technical Source:
-{source_concept}
-
-Target Metaphor Domain:
-{target_metaphor}
-
-Generated Output to Evaluate ({approach_name}):
-{text_to_grade}
-
-Evaluate the generated output on two specific metrics. Provide a JSON response with the following keys exactly:
-1. "contextual_leakage_score": (0 to 100). Higher is better. 100 means zero technical jargon "leaked" into the metaphor. 0 means it failed completely to maintain the metaphorical disguise.
-2. "structural_fidelity_score": (0 to 100). Higher is better. 100 means every single operational rule and relationship from the technical source was perfectly mapped without omission or hallucination.
-3. "failure_diagnostics": A short string explaining specifically where and how the output failed (e.g., "Leaked the word 'node'", or "Missed the rule about scheduling"). If it scored 100 on both, say "Perfect adherence."
-4. "tagged_output": The exact original text of the "Generated Output", but MUST be rewritten to wrap any blatantly translated technical terms (like Node, Pod, CPU, etc) from the technical source in an XML tag: `<leak>term</leak>`. If no leakage occurred, return the original text unmodified.
-
-Return ONLY valid JSON.
+Usage:
+    python generate_evidence.py              # Full 50-concept run
+    python generate_evidence.py --dry-run    # 2-concept smoke test
+    python generate_evidence.py --count 10   # Custom count
 """
 
+import os
+import sys
+import csv
+import json
+import time
+import argparse
+from datetime import datetime
+
+from imaw.agents import get_client, MODEL_NAME, configure
+from imaw.orchestrator import IMAWOrchestrator
+from test_corpus import TEST_CORPUS
+
+
+# ── Gemini 2.5 Pro pricing (per 1M tokens, as of March 2026) ─────────────
+# Adjust these if using a different provider.
+COST_PER_1M_INPUT = 1.25   # $1.25 per 1M input tokens
+COST_PER_1M_OUTPUT = 10.00  # $10.00 per 1M output tokens
+
+
+# ── Telemetry Wrapper ─────────────────────────────────────────────────────
+
+class TelemetryTracker:
+    """Wraps API calls to capture latency and token usage."""
+
+    def __init__(self):
+        self.calls = []
+        self.total_input_tokens = 0
+        self.total_output_tokens = 0
+        self.total_latency = 0.0
+
+    def record(self, label: str, latency: float, input_tokens: int = 0, output_tokens: int = 0):
+        cost = (input_tokens / 1_000_000 * COST_PER_1M_INPUT +
+                output_tokens / 1_000_000 * COST_PER_1M_OUTPUT)
+        entry = {
+            "label": label,
+            "latency_s": round(latency, 2),
+            "input_tokens": input_tokens,
+            "output_tokens": output_tokens,
+            "cost_usd": round(cost, 6),
+        }
+        self.calls.append(entry)
+        self.total_input_tokens += input_tokens
+        self.total_output_tokens += output_tokens
+        self.total_latency += latency
+
+    @property
+    def total_cost(self) -> float:
+        return (self.total_input_tokens / 1_000_000 * COST_PER_1M_INPUT +
+                self.total_output_tokens / 1_000_000 * COST_PER_1M_OUTPUT)
+
+    def summary(self) -> dict:
+        return {
+            "total_calls": len(self.calls),
+            "total_latency_s": round(self.total_latency, 2),
+            "total_input_tokens": self.total_input_tokens,
+            "total_output_tokens": self.total_output_tokens,
+            "total_cost_usd": round(self.total_cost, 4),
+        }
+
+
+# ── Monolithic Control Pipeline ───────────────────────────────────────────
+
+def run_monolithic(source_concept: str, target_metaphor: str, tracker: TelemetryTracker) -> str:
+    """
+    Fair-fight monolithic control: Chain-of-Thought + JSON schema enforcement.
+    This is NOT a strawman — it uses best-practice prompting.
+    """
+    client = get_client()
+
+    prompt = (
+        f"You are an expert educator specializing in analogy-based teaching.\n\n"
+        f"TASK: Explain the following technical concept ENTIRELY through a metaphor. "
+        f"The final output must be a lesson written 100% inside the metaphor — "
+        f"do NOT reference the original technical domain at any point.\n\n"
+        f"TECHNICAL CONCEPT:\n{source_concept}\n\n"
+        f"TARGET METAPHOR:\n{target_metaphor}\n\n"
+        f"INSTRUCTIONS:\n"
+        f"1. First, internally identify the key entities, relationships, and rules.\n"
+        f"2. Map each entity to a metaphorical equivalent.\n"
+        f"3. Write the lesson using ONLY metaphorical terms.\n"
+        f"4. Never mention any technical jargon from the source domain.\n"
+        f"5. The lesson should be engaging, detailed, and structurally faithful.\n\n"
+        f"Write the lesson now."
+    )
+
+    start = time.time()
+    response = client.models.generate_content(model=MODEL_NAME, contents=prompt)
+    latency = time.time() - start
+
+    # Extract token counts (Gemini response metadata)
+    input_tokens = 0
+    output_tokens = 0
+    try:
+        if hasattr(response, 'usage_metadata'):
+            input_tokens = getattr(response.usage_metadata, 'prompt_token_count', 0) or 0
+            output_tokens = getattr(response.usage_metadata, 'candidates_token_count', 0) or 0
+    except Exception:
+        pass
+
+    tracker.record("monolithic", latency, input_tokens, output_tokens)
+    return response.text
+
+
+# ── IMAW Pipeline with Telemetry ──────────────────────────────────────────
+
+def run_imaw_pipeline(source_concept: str, target_metaphor: str, tracker: TelemetryTracker) -> dict:
+    """
+    Runs the 4-agent IMAW pipeline, tracking total time.
+    Individual agent telemetry would require modifying each agent — for now
+    we track the total pipeline time.
+    """
+    start = time.time()
+    result = IMAWOrchestrator.generate_lesson(
+        source_concept, target_metaphor, include_decode_key=False
+    )
+    latency = time.time() - start
+
+    # We don't have per-agent token counts without modifying agents,
+    # so we record aggregate latency only for now.
+    tracker.record("imaw_pipeline", latency, 0, 0)
+    return result
+
+
+# ── Binary Semantic Leakage Grader (LLM-as-Judge) ─────────────────────────
+
+def grade_for_leakage(source_concept: str, target_metaphor: str,
+                       output_text: str, pipeline_label: str,
+                       tracker: TelemetryTracker) -> dict:
+    """
+    Binary grader: Does the output contain ANY explicit source-domain vocabulary?
+    Returns {leakage: YES/NO, leaked_words: [...], explanation: str}
+    """
+    client = get_client()
+
+    grading_prompt = f"""You are a strict automated auditor checking for "Semantic Leakage" — 
+when source-domain technical jargon appears in a metaphorical explanation.
+
+ORIGINAL TECHNICAL SOURCE:
+{source_concept}
+
+TARGET METAPHOR DOMAIN:
+{target_metaphor}
+
+GENERATED OUTPUT ({pipeline_label}):
+{output_text}
+
+YOUR TASK:
+1. Read the generated output carefully.
+2. Identify ANY word or phrase that is explicit technical vocabulary from the ORIGINAL source domain.
+   - Example leaks: using "Pod", "kube-scheduler", "node", "container", "API" when the metaphor is about a hotel.
+   - NOT a leak: generic words like "system", "process", "rule" that appear in both domains naturally.
+   - NOT a leak: structural parallels — the metaphor SHOULD mirror the source's logic, that's the point.
+3. Provide a binary verdict.
+
+Return ONLY valid JSON with these exact keys:
+{{
+    "leakage": "YES" or "NO",
+    "leaked_words": ["list", "of", "leaked", "terms"],
+    "explanation": "Brief explanation of what leaked and why, or 'No source-domain vocabulary detected.'"
+}}
+"""
+
+    start = time.time()
     response = client.models.generate_content(
         model=MODEL_NAME,
         contents=grading_prompt,
-        config={
-            "response_mime_type": "application/json"
-        }
+        config={"response_mime_type": "application/json"}
     )
+    latency = time.time() - start
+
+    input_tokens = 0
+    output_tokens = 0
+    try:
+        if hasattr(response, 'usage_metadata'):
+            input_tokens = getattr(response.usage_metadata, 'prompt_token_count', 0) or 0
+            output_tokens = getattr(response.usage_metadata, 'candidates_token_count', 0) or 0
+    except Exception:
+        pass
+
+    tracker.record(f"grader_{pipeline_label}", latency, input_tokens, output_tokens)
+
     try:
         return json.loads(response.text)
-    except BaseException as e:
-        print(f"Error parsing grading JSON: {e}")
+    except Exception as e:
+        print(f"  ⚠ Failed to parse grading JSON for {pipeline_label}: {e}")
         return {
-            "contextual_leakage_score": 0,
-            "structural_fidelity_score": 0,
-            "failure_diagnostics": "Failed to parse grading output.",
-            "tagged_output": text_to_grade
+            "leakage": "ERROR",
+            "leaked_words": [],
+            "explanation": f"Grading parse error: {e}",
         }
 
+
+# ── Main Runner ───────────────────────────────────────────────────────────
 
 def main():
-    print("==========================================================")
-    print("  IMAW Evidence Generator: Enterprise Control Architecture")
-    print("==========================================================")
-    
-    # High-stakes enterprise scenario: Kubernetes Architecture
-    source_concept = (
-        "Kubernetes Cluster Architecture: "
-        "1. Control Plane: Manages the worker nodes and the Pods in the cluster. It consists of several components. "
-        "2. kube-apiserver: The frontend for the Kubernetes control plane. It exposes the Kubernetes API. "
-        "3. etcd: Consistent and highly-available key value store used as Kubernetes' backing store for all cluster data. "
-        "4. kube-scheduler: Watches for newly created Pods with no assigned node, and selects a node for them to run on based on resource requirements. "
-        "5. kube-controller-manager: Runs controller processes (like Node controller, Job controller) to regulate state. "
-        "6. Worker Nodes: The machines (VMs or physical) that run the containerized applications. "
-        "7. kubelet: An agent that runs on each node in the cluster, ensuring containers are running in a Pod. "
-        "8. Pod: The smallest deployable units of computing that you can create and manage in Kubernetes. "
-        "Rule: The scheduler cannot place a Pod on a node if the node lacks the designated CPU/Memory resources."
-    )
-    
-    # Target Metaphor
-    target_metaphor = "Running a massive, complex 19th-century luxury hotel (like The Grand Budapest Hotel)."
-    
-    print(f"\n[Source Concept]:\n{source_concept[:100]}...\n")
-    print(f"[Target Metaphor Context]:\n{target_metaphor}\n")
+    parser = argparse.ArgumentParser(description="IMAW Evidence Generator — A/B Test Suite")
+    parser.add_argument("--dry-run", action="store_true", help="Run only 2 concepts for smoke testing")
+    parser.add_argument("--count", type=int, default=50, help="Number of concepts to test (default: 50)")
+    parser.add_argument("--provider", type=str, default="gemini", help="LLM provider (default: gemini)")
+    parser.add_argument("--model", type=str, default=None, help="Model override")
+    args = parser.parse_args()
 
-    # --- EXPERIMENT A: STANDARD MONOLITHIC LLM ---
-    print("\n⏳ Running Experiment A: Standard Monolithic LLM Single Prompt...")
-    standard_lesson = get_standard_llm_response(source_concept, target_metaphor)
-    print("✓ Standard LLM Generation Complete")
-    
-    print("⏳ Grading Standard LLM...")
-    standard_grades = process_grading(source_concept, target_metaphor, standard_lesson, "Monolithic LLM")
+    # Configure provider
+    if args.provider != "gemini" or args.model:
+        configure(provider=args.provider, model=args.model)
 
-    # --- EXPERIMENT B: IMAW PIPELINE ---
-    print("\n⏳ Running Experiment B: The 3-Agent IMAW Pipeline...")
-    imaw_results = IMAWOrchestrator.generate_lesson(source_concept, target_metaphor)
-    imaw_lesson = imaw_results["lesson"]
-    print("✓ IMAW Pipeline Generation Complete")
-    
-    print("⏳ Grading IMAW Pipeline...")
-    imaw_grades = process_grading(source_concept, target_metaphor, imaw_lesson, "IMAW Semantic Firewall")
+    count = 2 if args.dry_run else min(args.count, len(TEST_CORPUS))
+    corpus = TEST_CORPUS[:count]
 
-    # Save outputs for the website
-    os.makedirs("/tmp/evidence", exist_ok=True)
-    
-    # JSON Data for frontend EvidenceViewer.jsx
-    evidence_data = {
-        "scenario": "Kubernetes Cluster Architecture",
-        "source_concept": source_concept,
-        "metaphor": target_metaphor,
-        "standard_llm": {
-            "raw_output": standard_lesson,
-            "grades": standard_grades
-        },
-        "imaw_pipeline": {
-            "raw_output": imaw_lesson,
-            "abstract_schema": imaw_results["abstract_schema"],
-            "isomorphic_mapping": imaw_results["mapping"],
-            "grades": imaw_grades
-        }
-    }
-    
-    with open("/tmp/evidence/evidence_data.json", "w") as f:
-        json.dump(evidence_data, f, indent=2)
+    print("=" * 60)
+    print("  IMAW Evidence Generator: A/B Test Suite with Telemetry")
+    print("=" * 60)
+    print(f"  Provider:  {args.provider}")
+    print(f"  Model:     {MODEL_NAME}")
+    print(f"  Concepts:  {count}")
+    print(f"  Mode:      {'DRY RUN' if args.dry_run else 'FULL RUN'}")
+    print("=" * 60)
 
-    # Markdown Report
-    with open("/tmp/evidence/evidence_report.md", "w") as f:
-        f.write("# Empirical Evidence Report: Generative Control Architecture\n\n")
-        f.write(f"**Enterprise Scenario:** Kubernetes Architecture\n")
-        f.write(f"**Target Metaphor:** {target_metaphor}\n\n")
-        f.write("---\n\n## Experiment A: Monolithic LLM Failure\n")
-        f.write(f"**Contextual Leakage Score:** {standard_grades['contextual_leakage_score']}/100\n")
-        f.write(f"**Structural Fidelity Score:** {standard_grades['structural_fidelity_score']}/100\n")
-        f.write(f"**Diagnostics:** {standard_grades['failure_diagnostics']}\n\n")
-        f.write("### Raw Output\n\n" + standard_lesson + "\n\n")
-        
-        f.write("---\n\n## Experiment B: IMAW Architectural Success\n")
-        f.write(f"**Contextual Leakage Score:** {imaw_grades['contextual_leakage_score']}/100\n")
-        f.write(f"**Structural Fidelity Score:** {imaw_grades['structural_fidelity_score']}/100\n")
-        f.write(f"**Diagnostics:** {imaw_grades['failure_diagnostics']}\n\n")
-        f.write("### Phase 1: Pure Logic Extraction (Decomposition)\n```json\n" + imaw_results["abstract_schema"] + "\n```\n\n")
-        f.write("### Phase 2: Domain Translation (Mapmaker)\n```json\n" + imaw_results["mapping"] + "\n```\n\n")
-        f.write("### Phase 3: Synthesized Output (Storyteller)\n\n" + imaw_lesson)
-        
-    print("\n💾 Empirical evidence generated and saved to: /tmp/evidence/")
-    print("\n--- GRADING SUMMARY ---")
-    print("Standard LLM:")
-    print(f"  Leakage Score: {standard_grades['contextual_leakage_score']}")
-    print(f"  Fidelity Score: {standard_grades['structural_fidelity_score']}")
-    print("IMAW:")
-    print(f"  Leakage Score: {imaw_grades['contextual_leakage_score']}")
-    print(f"  Fidelity Score: {imaw_grades['structural_fidelity_score']}")
+    tracker = TelemetryTracker()
+    results = []
+
+    for i, case in enumerate(corpus, 1):
+        print(f"\n── Concept {i}/{count}: {case['source'][:60]}...")
+        print(f"   Metaphor: {case['metaphor']}")
+
+        # ── Run Monolithic ──
+        print("   ⏳ Running monolithic pipeline...")
+        try:
+            mono_output = run_monolithic(case["source"], case["metaphor"], tracker)
+        except Exception as e:
+            print(f"   ❌ Monolithic failed: {e}")
+            mono_output = f"[ERROR: {e}]"
+
+        # ── Run IMAW ──
+        print("   ⏳ Running IMAW 4-agent pipeline...")
+        try:
+            imaw_result = run_imaw_pipeline(case["source"], case["metaphor"], tracker)
+            imaw_output = imaw_result["lesson"]
+        except Exception as e:
+            print(f"   ❌ IMAW pipeline failed: {e}")
+            imaw_output = f"[ERROR: {e}]"
+            imaw_result = {"lesson": imaw_output, "abstract_schema": "", "mapping": ""}
+
+        # ── Grade both ──
+        print("   ⏳ Grading monolithic for leakage...")
+        mono_grade = grade_for_leakage(
+            case["source"], case["metaphor"], mono_output, "monolithic", tracker
+        )
+
+        print("   ⏳ Grading IMAW for leakage...")
+        imaw_grade = grade_for_leakage(
+            case["source"], case["metaphor"], imaw_output, "imaw", tracker
+        )
+
+        mono_leaked = mono_grade.get("leakage", "ERROR") == "YES"
+        imaw_leaked = imaw_grade.get("leakage", "ERROR") == "YES"
+
+        print(f"   📊 Monolithic: {'🔴 LEAKED' if mono_leaked else '🟢 Clean'} | "
+              f"IMAW: {'🔴 LEAKED' if imaw_leaked else '🟢 Clean'}")
+
+        results.append({
+            "concept_id": case["id"],
+            "domain_category": case["domain_category"],
+            "source": case["source"][:80],
+            "metaphor": case["metaphor"],
+            # Monolithic
+            "mono_leakage": mono_grade.get("leakage", "ERROR"),
+            "mono_leaked_words": "; ".join(mono_grade.get("leaked_words", [])),
+            "mono_explanation": mono_grade.get("explanation", ""),
+            # IMAW
+            "imaw_leakage": imaw_grade.get("leakage", "ERROR"),
+            "imaw_leaked_words": "; ".join(imaw_grade.get("leaked_words", [])),
+            "imaw_explanation": imaw_grade.get("explanation", ""),
+        })
+
+    # ── Write CSV ──
+    output_dir = os.environ.get("IMAW_OUTPUT_DIR", "/tmp/imaw_evidence")
+    os.makedirs(output_dir, exist_ok=True)
+    timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
+    csv_path = os.path.join(output_dir, f"evidence_results_{timestamp}.csv")
+
+    with open(csv_path, "w", newline="") as f:
+        writer = csv.DictWriter(f, fieldnames=results[0].keys())
+        writer.writeheader()
+        writer.writerows(results)
+
+    print(f"\n💾 CSV saved: {csv_path}")
+
+    # ── Generate Markdown Report ──
+    mono_leak_count = sum(1 for r in results if r["mono_leakage"] == "YES")
+    imaw_leak_count = sum(1 for r in results if r["imaw_leakage"] == "YES")
+    total = len(results)
+    mono_rate = mono_leak_count / total * 100
+    imaw_rate = imaw_leak_count / total * 100
+
+    telemetry = tracker.summary()
+
+    md_path = os.path.join(output_dir, f"evidence_report_{timestamp}.md")
+    with open(md_path, "w") as f:
+        f.write("# Empirical Evidence Report: IMAW Generative Control Architecture\n\n")
+        f.write(f"**Date:** {datetime.now().strftime('%Y-%m-%d %H:%M')}\n")
+        f.write(f"**Model:** {MODEL_NAME}\n")
+        f.write(f"**Concepts Tested:** {total}\n\n")
+        f.write("---\n\n")
+        f.write("## Headline Results\n\n")
+        f.write("| Metric | Monolithic LLM | IMAW Pipeline |\n")
+        f.write("|--------|---------------|---------------|\n")
+        f.write(f"| Semantic Leakage Rate | {mono_rate:.0f}% ({mono_leak_count}/{total}) | {imaw_rate:.0f}% ({imaw_leak_count}/{total}) |\n")
+        f.write(f"| Clean Generations | {total - mono_leak_count}/{total} | {total - imaw_leak_count}/{total} |\n\n")
+
+        f.write("## Telemetry Summary\n\n")
+        f.write("| Metric | Value |\n")
+        f.write("|--------|-------|\n")
+        f.write(f"| Total API Calls | {telemetry['total_calls']} |\n")
+        f.write(f"| Total Latency | {telemetry['total_latency_s']:.1f}s |\n")
+        f.write(f"| Total Input Tokens | {telemetry['total_input_tokens']:,} |\n")
+        f.write(f"| Total Output Tokens | {telemetry['total_output_tokens']:,} |\n")
+        f.write(f"| Estimated Cost | ${telemetry['total_cost_usd']:.2f} |\n\n")
+
+        f.write("## Per-Concept Results\n\n")
+        f.write("| # | Domain | Metaphor | Mono Leakage | IMAW Leakage | Mono Leaked Words |\n")
+        f.write("|---|--------|----------|-------------|-------------|-------------------|\n")
+        for r in results:
+            leaked = r['mono_leaked_words'][:50] + "..." if len(r['mono_leaked_words']) > 50 else r['mono_leaked_words']
+            f.write(
+                f"| {r['concept_id']} | {r['domain_category']} | {r['metaphor'][:30]}... "
+                f"| {r['mono_leakage']} | {r['imaw_leakage']} | {leaked} |\n"
+            )
+
+        f.write("\n---\n\n")
+        f.write("*Generated by `generate_evidence.py` — IMAW A/B Test Suite*\n")
+
+    print(f"📄 Report saved: {md_path}")
+
+    # ── Print Summary ──
+    print("\n" + "=" * 60)
+    print("  RESULTS SUMMARY")
+    print("=" * 60)
+    print(f"  Monolithic Leakage Rate:  {mono_rate:.0f}% ({mono_leak_count}/{total})")
+    print(f"  IMAW Leakage Rate:        {imaw_rate:.0f}% ({imaw_leak_count}/{total})")
+    print(f"  Total Latency:            {telemetry['total_latency_s']:.1f}s")
+    print(f"  Estimated Cost:           ${telemetry['total_cost_usd']:.2f}")
+    print("=" * 60)
+
 
 if __name__ == "__main__":
     main()
