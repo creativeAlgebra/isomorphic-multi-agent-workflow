@@ -203,12 +203,273 @@ Return ONLY valid JSON with these exact keys:
         }
 
 
+# ── Calibrated Two-Tier Re-Grader ─────────────────────────────────────
+
+def calibrated_regrade(source_concept: str, target_metaphor: str,
+                       leaked_words: str, explanation: str,
+                       pipeline_label: str,
+                       tracker: TelemetryTracker) -> dict:
+    """
+    Two-tier re-grader: reclassifies a binary YES leakage flag as either
+    HARD (verbatim source-domain jargon) or SOFT (structural resemblance
+    using metaphor-native vocabulary — NOT actual leakage).
+    """
+    client = get_client()
+
+    grading_prompt = f"""You are a calibrated auditor reviewing a previous leakage assessment.
+
+A binary grader flagged the following output as containing Semantic Leakage.
+Your job is to re-evaluate using a TWO-TIER rubric:
+
+**HARD LEAKAGE:** A specific source-domain technical term appears VERBATIM in the output.
+  - Examples: "kube-scheduler", "API Gateway", "azeotrope", "Cooper pairs", "Cas9"
+  - These are unambiguous technical jargon that has NO natural place in the target metaphor domain.
+
+**SOFT RESEMBLANCE (NOT leakage):** The output structurally mirrors the source concept's logic
+but uses vocabulary that is either:
+  - Generic English words natural to both domains (e.g., "system", "process", "cycle", "reduced")
+  - Words that belong to the target metaphor domain even if they also appear in the source
+  - Structural parallels that reflect correct translation, not vocabulary contamination
+
+ORIGINAL SOURCE DOMAIN:
+{source_concept}
+
+TARGET METAPHOR DOMAIN:
+{target_metaphor}
+
+PREVIOUS BINARY GRADER'S FLAGGED WORDS:
+{leaked_words}
+
+PREVIOUS BINARY GRADER'S EXPLANATION:
+{explanation}
+
+YOUR TASK:
+1. For each flagged word/phrase, determine if it is HARD leakage or SOFT resemblance.
+2. A word is HARD only if it is specific technical jargon from the source domain that
+   has no natural meaning in the target metaphor context.
+3. Generic words ("cycle", "process", "reduced", "test", "conflict") are SOFT even if
+   they appear in the source, because they are common English vocabulary.
+4. Structural parallels (the metaphor mirrors the source's logic) are SOFT — that is
+   the GOAL of the translation, not a failure.
+
+Return ONLY valid JSON:
+{{
+    "calibrated_leakage": "HARD" or "SOFT" or "NONE",
+    "hard_words": ["list", "of", "genuinely", "leaked", "terms"],
+    "soft_words": ["list", "of", "soft", "resemblance", "terms"],
+    "explanation": "Brief explanation of your reclassification."
+}}
+"""
+
+    start = time.time()
+    response = client.models.generate_content(
+        model=MODEL_NAME,
+        contents=grading_prompt,
+        config={"response_mime_type": "application/json"}
+    )
+    latency = time.time() - start
+
+    input_tokens = 0
+    output_tokens = 0
+    try:
+        if hasattr(response, 'usage_metadata'):
+            input_tokens = getattr(response.usage_metadata, 'prompt_token_count', 0) or 0
+            output_tokens = getattr(response.usage_metadata, 'candidates_token_count', 0) or 0
+    except Exception:
+        pass
+
+    tracker.record(f"calibrated_regrade_{pipeline_label}", latency, input_tokens, output_tokens)
+
+    try:
+        return json.loads(response.text)
+    except Exception as e:
+        print(f"  ⚠ Failed to parse calibrated grading JSON for {pipeline_label}: {e}")
+        return {
+            "calibrated_leakage": "ERROR",
+            "hard_words": [],
+            "soft_words": [],
+            "explanation": f"Parse error: {e}",
+        }
+
+
+def regrade_from_csv(csv_path: str, dry_run: bool = False):
+    """
+    Reads an existing evidence CSV and re-grades all YES rows using the
+    calibrated two-tier rubric. Outputs a new CSV and comparison report.
+    """
+    import csv as csv_mod
+
+    if not os.path.exists(csv_path):
+        print(f"❌ CSV not found: {csv_path}")
+        sys.exit(1)
+
+    with open(csv_path, "r") as f:
+        reader = csv_mod.DictReader(f)
+        rows = list(reader)
+
+    if dry_run:
+        rows = rows[:2]
+
+    print("=" * 60)
+    print("  IMAW Calibrated Re-Grader: Two-Tier Rubric")
+    print("=" * 60)
+    print(f"  Source CSV:  {csv_path}")
+    print(f"  Rows:        {len(rows)}")
+    print(f"  Mode:        {'DRY RUN (2 rows)' if dry_run else 'FULL'}")
+    print("=" * 60)
+
+    # Load the test corpus for source concept lookup
+    corpus_map = {str(c["id"]): c for c in TEST_CORPUS}
+    tracker = TelemetryTracker()
+
+    for i, row in enumerate(rows, 1):
+        concept_id = row["concept_id"]
+        corpus_entry = corpus_map.get(concept_id, {})
+        source_concept = corpus_entry.get("source", row.get("source", ""))
+        metaphor = corpus_entry.get("metaphor", row.get("metaphor", ""))
+
+        print(f"\n── Re-grading concept {concept_id} ({i}/{len(rows)})")
+
+        # ── Re-grade monolithic ──
+        if row.get("mono_leakage") == "YES":
+            print(f"   ⏳ Calibrating monolithic grade...")
+            mono_cal = calibrated_regrade(
+                source_concept, metaphor,
+                row.get("mono_leaked_words", ""),
+                row.get("mono_explanation", ""),
+                "monolithic", tracker
+            )
+        else:
+            mono_cal = {"calibrated_leakage": "NONE", "hard_words": [], "soft_words": [], "explanation": "Original: NO leakage"}
+
+        row["mono_calibrated_leakage"] = mono_cal.get("calibrated_leakage", "ERROR")
+        row["mono_hard_words"] = "; ".join(mono_cal.get("hard_words", []))
+        row["mono_soft_words"] = "; ".join(mono_cal.get("soft_words", []))
+        row["mono_calibrated_explanation"] = mono_cal.get("explanation", "")
+
+        # ── Re-grade IMAW ──
+        if row.get("imaw_leakage") == "YES":
+            print(f"   ⏳ Calibrating IMAW grade...")
+            imaw_cal = calibrated_regrade(
+                source_concept, metaphor,
+                row.get("imaw_leaked_words", ""),
+                row.get("imaw_explanation", ""),
+                "imaw", tracker
+            )
+        else:
+            imaw_cal = {"calibrated_leakage": "NONE", "hard_words": [], "soft_words": [], "explanation": "Original: NO leakage"}
+
+        row["imaw_calibrated_leakage"] = imaw_cal.get("calibrated_leakage", "ERROR")
+        row["imaw_hard_words"] = "; ".join(imaw_cal.get("hard_words", []))
+        row["imaw_soft_words"] = "; ".join(imaw_cal.get("soft_words", []))
+        row["imaw_calibrated_explanation"] = imaw_cal.get("explanation", "")
+
+        mono_label = mono_cal.get("calibrated_leakage", "?")
+        imaw_label = imaw_cal.get("calibrated_leakage", "?")
+        print(f"   📊 Mono: {row['mono_leakage']} → {mono_label} | IMAW: {row['imaw_leakage']} → {imaw_label}")
+
+    # ── Write output CSV ──
+    output_dir = os.path.dirname(csv_path)
+    timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
+    out_csv = os.path.join(output_dir, f"evidence_calibrated_{timestamp}.csv")
+
+    fieldnames = list(rows[0].keys())
+    with open(out_csv, "w", newline="") as f:
+        writer = csv_mod.DictWriter(f, fieldnames=fieldnames)
+        writer.writeheader()
+        writer.writerows(rows)
+
+    print(f"\n💾 Calibrated CSV saved: {out_csv}")
+
+    # ── Compute comparison stats ──
+    total = len(rows)
+
+    # Binary counts
+    mono_binary_yes = sum(1 for r in rows if r["mono_leakage"] == "YES")
+    imaw_binary_yes = sum(1 for r in rows if r["imaw_leakage"] == "YES")
+
+    # Calibrated counts (HARD only = true leakage)
+    mono_hard = sum(1 for r in rows if r["mono_calibrated_leakage"] == "HARD")
+    imaw_hard = sum(1 for r in rows if r["imaw_calibrated_leakage"] == "HARD")
+    mono_soft = sum(1 for r in rows if r["mono_calibrated_leakage"] == "SOFT")
+    imaw_soft = sum(1 for r in rows if r["imaw_calibrated_leakage"] == "SOFT")
+
+    # ── Generate comparison report ──
+    report_path = os.path.join(output_dir, f"evidence_calibrated_report_{timestamp}.md")
+    telemetry = tracker.summary()
+
+    with open(report_path, "w") as f:
+        f.write("# Calibrated Evidence Report: Binary vs. Two-Tier Assessment\n\n")
+        f.write(f"**Date:** {datetime.now().strftime('%Y-%m-%d %H:%M')}\n")
+        f.write(f"**Model:** {MODEL_NAME}\n")
+        f.write(f"**Source CSV:** {os.path.basename(csv_path)}\n")
+        f.write(f"**Concepts Evaluated:** {total}\n\n")
+        f.write("---\n\n")
+
+        f.write("## Headline Comparison\n\n")
+        f.write("| Metric | Monolithic LLM | IMAW Pipeline |\n")
+        f.write("|--------|---------------|---------------|\n")
+        f.write(f"| Binary Leakage Rate | {mono_binary_yes/total*100:.0f}% ({mono_binary_yes}/{total}) | {imaw_binary_yes/total*100:.0f}% ({imaw_binary_yes}/{total}) |\n")
+        f.write(f"| **Hard Leakage Rate (Calibrated)** | **{mono_hard/total*100:.0f}% ({mono_hard}/{total})** | **{imaw_hard/total*100:.0f}% ({imaw_hard}/{total})** |\n")
+        f.write(f"| Soft Resemblance (Reclassified) | {mono_soft}/{total} | {imaw_soft}/{total} |\n")
+        f.write(f"| Clean (No Leakage) | {total - mono_binary_yes}/{total} | {total - imaw_binary_yes}/{total} |\n\n")
+
+        f.write("## Key Insight\n\n")
+        f.write(f"The binary grader flagged {imaw_binary_yes} IMAW outputs as leaked vs. {mono_binary_yes} monolithic. ")
+        f.write(f"After calibration, **{imaw_hard}** IMAW outputs show genuine Hard Leakage ")
+        f.write(f"vs. **{mono_hard}** monolithic — ")
+        if imaw_hard < mono_hard:
+            f.write("confirming that the IMAW pipeline produces significantly less genuine jargon leakage.\n\n")
+        elif imaw_hard == mono_hard:
+            f.write("showing equivalent rates of genuine jargon leakage.\n\n")
+        else:
+            f.write("a result that warrants further investigation.\n\n")
+
+        f.write(f"{imaw_soft} IMAW outputs were reclassified from YES → SOFT (structural resemblance, not leakage).\n\n")
+
+        f.write("## Re-grading Telemetry\n\n")
+        f.write(f"| Metric | Value |\n")
+        f.write(f"|--------|-------|\n")
+        f.write(f"| Total API Calls | {telemetry['total_calls']} |\n")
+        f.write(f"| Total Latency | {telemetry['total_latency_s']:.1f}s |\n")
+        f.write(f"| Estimated Cost | ${telemetry['total_cost_usd']:.2f} |\n\n")
+
+        f.write("## Per-Concept Comparison\n\n")
+        f.write("| # | Domain | Mono Binary | Mono Calibrated | IMAW Binary | IMAW Calibrated | IMAW Hard Words |\n")
+        f.write("|---|--------|-------------|-----------------|-------------|-----------------|-----------------|\n")
+        for r in rows:
+            hard_words = r.get('imaw_hard_words', '')[:50]
+            f.write(
+                f"| {r['concept_id']} | {r['domain_category']} "
+                f"| {r['mono_leakage']} | {r['mono_calibrated_leakage']} "
+                f"| {r['imaw_leakage']} | {r['imaw_calibrated_leakage']} "
+                f"| {hard_words} |\n"
+            )
+
+        f.write("\n---\n\n")
+        f.write("*Generated by `generate_evidence.py --regrade` — Calibrated Two-Tier Assessment*\n")
+
+    print(f"📄 Report saved: {report_path}")
+
+    # ── Print Summary ──
+    print("\n" + "=" * 60)
+    print("  CALIBRATED RE-GRADING SUMMARY")
+    print("=" * 60)
+    print(f"  Binary Grader:     Mono {mono_binary_yes/total*100:.0f}% | IMAW {imaw_binary_yes/total*100:.0f}%")
+    print(f"  Calibrated (Hard): Mono {mono_hard/total*100:.0f}% ({mono_hard}/{total}) | IMAW {imaw_hard/total*100:.0f}% ({imaw_hard}/{total})")
+    print(f"  Reclassified Soft: Mono {mono_soft}/{total} | IMAW {imaw_soft}/{total}")
+    print(f"  Re-grading Cost:   ${telemetry['total_cost_usd']:.2f}")
+    print("=" * 60)
+
+
 # ── Main Runner ───────────────────────────────────────────────────────────
 
 def main():
     parser = argparse.ArgumentParser(description="IMAW Evidence Generator — A/B Test Suite")
     parser.add_argument("--dry-run", action="store_true", help="Run only 2 concepts for smoke testing")
     parser.add_argument("--count", type=int, default=50, help="Number of concepts to test (default: 50)")
+    parser.add_argument("--regrade", type=str, default=None, metavar="CSV_PATH",
+                        help="Re-grade an existing CSV with calibrated two-tier rubric (skip generation)")
     parser.add_argument("--provider", type=str, default="gemini", help="LLM provider (default: gemini)")
     parser.add_argument("--model", type=str, default=None, help="Model override")
     args = parser.parse_args()
@@ -216,6 +477,11 @@ def main():
     # Configure provider
     if args.provider != "gemini" or args.model:
         configure(provider=args.provider, model=args.model)
+
+    # ── Re-grade mode ──
+    if args.regrade:
+        regrade_from_csv(args.regrade, dry_run=args.dry_run)
+        return
 
     count = 2 if args.dry_run else min(args.count, len(TEST_CORPUS))
     corpus = TEST_CORPUS[:count]
