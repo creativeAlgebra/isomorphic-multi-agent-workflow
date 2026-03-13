@@ -118,6 +118,12 @@ The core insight is **Contextual Blindness** — physically separating the workf
 └────────┬────────────┘
          │
          ▼
+┌ ─ ─ ─ ─ ─ ─ ─ ─ ─ ─┐
+  Agent 1.5: Validate    LLM-Judge checks schema for source jargon
+  (v1.1 Gate)            Rejects + remediates if leaked terms found
+└ ─ ─ ─ ─ ┬ ─ ─ ─ ─ ─┘
+         │
+         ▼
 ┌─────────────────────┐
 │  Agent 2: Map       │  Builds 1:1 translation dictionary
 │  (Blind to source)  │  Abstract entities → metaphor entities
@@ -144,7 +150,7 @@ isomorphic-multi-agent-workflow/
 ├── cli.py                  # Interactive terminal UI (Rich + InquirerPy)
 ├── setup.py                # pip install -e .
 ├── requirements.txt        # Runtime dependencies
-├── generate_evidence.py    # Empirical test suite (IMAW vs monolithic LLM)
+├── generate_evidence.py    # Empirical test suite + calibrated re-grader
 ├── test_corpus.py          # 50 source/metaphor pairs across 12 domains
 ├── agents/                 # Individual agent implementations
 │   ├── decomposition.py    # Agent 1 — structural extraction
@@ -153,9 +159,12 @@ isomorphic-multi-agent-workflow/
 │   ├── decode_key.py       # Agent 4 — side-by-side decode key
 │   └── tutor.py            # Double-Translation Loop + Adaptive Schema Expansion
 ├── imaw/                   # Core library (importable package)
-│   ├── orchestrator.py     # 4-agent pipeline orchestration
+│   ├── orchestrator.py     # Pipeline orchestration (with v1.1 validation gate)
 │   ├── session.py          # TutorSession — mutable mapping, auto-expand, logging
-│   └── agents/             # Package-level agent implementations
+│   └── agents/
+│       ├── validation.py   # Agent 1.5 — decomposition validation gate (v1.1)
+│       └── ...             # Package-level agent implementations
+├── evidence/               # Empirical results (CSV + reports)
 ├── docs/
 │   ├── GETTING_STARTED.md  # Setup guide
 │   └── ARCHITECTURE.md     # Deep dive into methodology
@@ -167,7 +176,7 @@ isomorphic-multi-agent-workflow/
 
 The `generate_evidence.py` suite runs an automated A/B test: a Monolithic LLM (best-practice Chain-of-Thought prompting) vs. the 4-agent IMAW pipeline, across **50 source concepts** spanning 12 domain categories (infrastructure, finance, biology, networking, physics, law, chemistry, strategy, CS theory, social science, arts, ecology).
 
-Each output is graded by an independent **LLM-as-Judge** for binary Semantic Leakage: *does the metaphorical lesson contain ANY explicit source-domain vocabulary?*
+Each output is graded by an independent **LLM-as-Judge** using both binary and calibrated assessment:
 
 ```bash
 # Smoke test (2 concepts)
@@ -176,13 +185,37 @@ python generate_evidence.py --dry-run
 # Full 50-concept run
 python generate_evidence.py
 
-# Custom count
-python generate_evidence.py --count 10
+# Calibrated re-grading (two-tier: Hard Leakage vs Soft Resemblance)
+python generate_evidence.py --regrade evidence/evidence_results_20260313_130608.csv
 ```
 
-Results are saved as CSV (per-concept data) and Markdown (formatted report with headline tables) to `/tmp/imaw_evidence/` by default. Set `IMAW_OUTPUT_DIR` to customize.
+Results are saved as CSV (per-concept data) and Markdown (formatted report with headline tables) to the `evidence/` directory.
 
 > Full methodology and results are documented in the [research paper](https://controlarc.com).
+
+## Iterative Remediation (v1.0 → v1.1)
+
+The v1.0 evidence run produced an unexpected result: the IMAW pipeline showed a **66% binary leakage rate** — higher than the monolithic control (60%). A calibrated two-tier analysis revealed the real picture:
+
+| Metric | Monolithic LLM | IMAW Pipeline |
+|--------|---------------|---------------|
+| Binary Leakage Rate | 60% (30/50) | 66% (33/50) |
+| **Hard Leakage Rate** | **10% (5/50)** | **30% (15/50)** |
+| Soft Resemblance (not leakage) | 25/50 | 18/50 |
+
+The binary grader was detecting **Soft Resemblance** — structural parallels using generic vocabulary ("cycle," "process," "deposit") — as leakage. When calibrated to only count verbatim source-domain jargon (**Hard Leakage**), the monolithic rate dropped to 10% and IMAW to 30%.
+
+Critically, **100% of IMAW's Hard Leakage traced to a single agent stage**: the Decomposition Agent (Agent 1) failed to fully abstract compound technical terms like "API Gateway," "azeotrope," and "prior art," passing them into the schema where they propagated downstream.
+
+This is the core value of the multi-agent architecture: **the failure is localized and diagnosable.** A monolithic pipeline's 10% leakage is an opaque attention-weight artifact with no intervention point. IMAW's 30% traces to one agent, one failure mode, one fix.
+
+**v1.1 deploys that fix:** a **Decomposition Validation Gate** (`imaw/agents/validation.py`) that sits between Agent 1 and Agent 2. It uses an LLM-Judge to check the decomposed schema for source-domain vocabulary. If jargon is found, the schema is remediated — leaked terms are replaced with generic labels — before being passed downstream.
+
+```
+Agent 1: Decompose → [v1.1 Validation Gate] → Agent 2: Map → Agent 3: Synthesize
+```
+
+This is a surgical, targeted fix that is only possible because the pipeline architecture makes the failure localized. You cannot add a validation gate to a monolithic prompt.
 
 ## Links
 

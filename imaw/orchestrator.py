@@ -2,12 +2,14 @@ from .agents.decomposition import decompose
 from .agents.mapping import map_isomorphism
 from .agents.compiler import synthesize_lesson
 from .agents.decode_key import generate_decode_key
+from .agents.validation import validate_decomposition
 
 class IMAWOrchestrator:
     """
     The orchestrator manages the rigid Contextual Blindness pipeline for one-shot generations.
     It passes data sequentially through the 4-agent chain:
       1. Decompose  — strips domain jargon to pure abstract schema
+      1.5 Validate  — gate that rejects schemas containing source jargon (v1.1)
       2. Map        — builds 1:1 translation dictionary (blind to source)
       3. Synthesize  — assembles lesson within the metaphor (blind to source)
       4. Decode Key  — generates the Rosetta Stone bridging artifact
@@ -29,6 +31,9 @@ class IMAWOrchestrator:
         """
         # Agent 1: Pure logical extraction (blind to target metaphor)
         abstract_schema_json = decompose(source_concept)
+        
+        # Agent 1.5: Validation Gate — reject schemas with source jargon (v1.1)
+        abstract_schema_json = validate_decomposition(source_concept, abstract_schema_json)
         
         # Agent 2: Domain translation mapping (blind to source concept)
         mapping_json = map_isomorphism(abstract_schema_json, target_metaphor)
