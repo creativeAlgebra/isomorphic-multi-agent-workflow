@@ -1,36 +1,40 @@
 # Contributing to IMAW
 
-First off, thank you for considering contributing to IMAW! It's people like you that make the open-source AI community such a fantastic place to learn, inspire, and create.
+Thank you for considering contributing to IMAW! This project explores **Generative Control Architecture** — designing AI systems where reliability comes from structure, not instruction.
 
-## Principles of the IMAW Architecture
+## Core Architecture Constraints
 
-Before contributing, please review the core philosophy of this library in the `README.md`. The primary goal of IMAW is enforcing **Contextual Blindness** to eliminate structural hallucination. 
+Before contributing, please review the [Architecture Deep Dive](docs/ARCHITECTURE.md). The primary goal is enforcing **Contextual Blindness** to prevent Semantic Leakage. When submitting PRs to the core agents, please ensure:
 
-When submitting PRs (Pull Requests) to the core agents, please ensure:
-1. **Agent 1 (Decomposition)** remains completely unaware of Target Metaphors.
-2. **Agent 2 (Mapping)** receives only abstract mathematical schemas, never the original text.
-3. **Agent 3 (Compiler)** is not allowed to generate technical vocabulary from the original source.
+1. **Agent 1 (Decompose)** remains blind to the target metaphor.
+2. **Agent 2 (Map)** receives only the abstract schema and target metaphor — never the original source concept.
+3. **Agent 3 (Synthesize)** is blind to both the original source concept and the raw abstract schema.
+4. **Agent 4 (Decode Key)** is the *only* agent with full context — this is intentional.
+5. **Tutor agents** (Double-Translation Loop) maintain information isolation during reverse-translate, oracle, and forward-translate steps.
 
 ## How Can I Contribute?
 
 ### Reporting Bugs
-If you find a bug (e.g., an LLM hallucination leaking through the pipeline, or a Pydantic schema validation failure), please open an Issue. Include:
-* Your Python version.
-* The specific LLM model used (e.g., `gemini-2.5-pro`).
+
+If you find a bug (e.g., jargon leaking through the pipeline, a schema detection failure, or an expansion error), please open an Issue. Include:
+* Your Python version and provider/model used.
 * The `source_concept` and `target_metaphor` that triggered the failure.
-* The exact error output or hallucinated text.
+* The exact error output or leaked text.
 
 ### Suggesting Enhancements
-We are particularly interested in enhancements surrounding:
-* Expanding the supported LLM providers beyond Google GenAI.
-* Improving the semantic parsing capabilities of Agent 1.
-* Optimizing the latency of the `TutorSession` double-translation loop.
+
+We are particularly interested in:
+* **Decomposition edge cases** — Improving Agent 1's handling of highly abstract or recursive concepts (e.g., Gödel's theorem, self-referential systems).
+* **Decode Key quality assessment** — Measuring mapping completeness, bridging clarity, and net pedagogical value.
+* **Alternative schema representations** — Exploring approaches beyond the Entities/Relationships/Rules format for edge-case concepts.
+* **Validation gate tuning** — Reducing false positives/negatives in the v1.1 decomposition validation gate.
 
 ### Pull Requests
+
 1. Fork the repo and create your branch from `main`.
-2. Install the development dependencies and ensure your code passes local tests.
+2. Install dependencies: `pip install -e .`
 3. If you've added code that should be tested, add tests.
-4. Update the documentation (including `README.md` or Docstrings) if you've changed the API.
+4. Update documentation (including `README.md` or docstrings) if you've changed the API.
 5. Create a PR detailing the problem your code solves.
 
 ## Development Setup
