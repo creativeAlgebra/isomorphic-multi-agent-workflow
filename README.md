@@ -5,7 +5,7 @@
 <h1 align="center">Isomorphic Multi-Agent Workflow (IMAW)</h1>
 
 <p align="center">
-  <strong>A Generative Control Architecture that prevents structural corruption in AI-generated explanations.</strong>
+  <strong>A Generative Control Architecture that produces inspectable, editable structural artifacts for metaphor-based teaching.</strong>
 </p>
 
 <p align="center">
@@ -17,7 +17,7 @@
 
 ---
 
-When AI explains a complex system through a metaphor, source-domain jargon almost always leaks into the output — a phenomenon we call **Semantic Leakage**. The analogy starts well but breaks down as technical terms contaminate the narrative. IMAW prevents this through **Contextual Blindness** — splitting the translation across four isolated agents, each physically denied access to information that could cause contamination. The result is a metaphor with absolute structural fidelity: you can reason inside it, ask follow-up questions, and trust what you find.
+When AI explains a complex system through a metaphor, source-domain jargon almost always leaks into the output — a phenomenon we call **Semantic Leakage**. The analogy starts well but breaks down as technical terms contaminate the narrative. IMAW distributes the translation across four isolated agents, each producing an inspectable artifact — an abstract schema, a mapping dictionary, a lesson, and a decode key. Each agent is physically denied access to information that could cause contamination (**Contextual Blindness**). The result is a system of structured artifacts you can inspect, edit, and build on — not a disposable essay.
 
 ## Quickstart
 
