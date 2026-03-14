@@ -107,7 +107,7 @@ AGENT_QUIPS = {
     ],
     "synthesis": [
         "Assembling narrative from mapped logic",
-        "Enforcing zero-leakage synthesis",
+        "Synthesizing lesson from mapping",
         "Composing the lesson in-character",
         "Weaving metaphor around structure",
     ],
