@@ -785,7 +785,7 @@ function App() {
               </div>
               <div className="bg-emerald-50 p-6 rounded-xl border border-emerald-200">
                 <h3 className="font-semibold text-gray-900 mb-3 border-b border-emerald-200 pb-2">The IMAW Solution</h3>
-                <p className="text-gray-600 leading-relaxed"><strong>Data Isolation</strong> forces the agent to map the clinical data as a rigid mathematical graph. <strong>Stateful Translation</strong> uses that graph to construct accessible consumer explanations while preventing structural drift.</p>
+                <p className="text-gray-600 leading-relaxed"><strong>Data Isolation</strong> forces the agent to map the clinical data as a strict structural graph. <strong>Stateful Translation</strong> uses that graph to construct accessible consumer explanations while preventing structural drift.</p>
               </div>
               <div className="bg-amber-50 p-6 rounded-xl border border-amber-200">
                 <h3 className="font-semibold text-gray-900 mb-3 border-b border-amber-200 pb-2">The Proof (ROI)</h3>
@@ -913,14 +913,14 @@ function App() {
 
           <div className="space-y-8 text-gray-600 text-lg leading-relaxed">
             <p>
-              There are two ways the industry currently tries to make AI output reliable. Both fall mathematically short for enterprise use cases.
+              There are two ways the industry currently tries to make AI output reliable. Both fall short of the strict reliability and compliance requirements for enterprise use cases.
             </p>
 
             <div className="bg-gray-50 rounded-2xl border border-gray-200 p-8 space-y-6">
               <div>
                 <h3 className="font-semibold text-[#0f172a] text-base mb-2">The first is prompt instruction.</h3>
                 <p className="text-base text-gray-600 leading-relaxed">
-                  You add Chain-of-Thought reasoning, guardrails, and output schemas. This works—until it doesn't. When instructions fail, the failure is probabilistic and invisible. The model saw the right instructions and hallucinated anyway, offering developers zero diagnostic traceability into <em>which part</em> of the attention mechanism broke.
+                  You add Chain-of-Thought reasoning, guardrails, and output schemas. This works—until it doesn't. When instructions fail, the failure is probabilistic and invisible. The model saw the right instructions and hallucinated anyway, offering developers limited, opaque traceability into <em>where</em> the reasoning broke down.
                 </p>
               </div>
               <div className="border-t border-gray-200 pt-6">
@@ -936,7 +936,7 @@ function App() {
             </p>
 
             <p>
-              Generative Control Architecture is the engineering discipline of designing AI systems where reliability is guaranteed by <em>structure</em>, rather than requested by <em>instruction</em>. Instead of begging a model not to hallucinate, you architect the data pipeline so that contaminating contextual information is mathematically excluded from the context window during generation.
+              Generative Control Architecture is the engineering discipline of designing AI systems where reliability is guaranteed by <em>structure</em>, rather than requested by <em>instruction</em>. Instead of begging a model not to hallucinate, you architect the data pipeline so that contaminating contextual information is structurally excluded from the context window during generation.
             </p>
 
             <p>
@@ -944,7 +944,7 @@ function App() {
             </p>
 
             <p>
-              So, we built the <strong>Inspectable Multi-Agent Workflow (IMAW)</strong>—a generative control architecture that forces AI to commit to a human-auditable state. By enforcing strict <strong>Data Isolation</strong>, each autonomous agent operates in a mathematically restricted information space, completely blind to inputs that would otherwise compromise its output.
+              So, we built the <strong>Inspectable Multi-Agent Workflow (IMAW)</strong>—a generative control architecture that forces AI to commit to a human-auditable state. By enforcing strict <strong>Data Isolation</strong>, each autonomous agent operates in a strictly isolated information space, completely blind to inputs that would otherwise compromise its output.
             </p>
 
             <div className="bg-[#0f172a] text-white rounded-2xl p-8 my-8 shadow-xl">
@@ -1165,7 +1165,7 @@ function App() {
               </div>
               <h3 className="font-semibold text-[#0f172a] text-xl mb-3">Provably Constrained</h3>
               <p className="text-gray-500 leading-relaxed text-sm">
-                Structuring the intermediate state ensures strict traceability, replacing mathematically impossible "Zero Hallucination" claims with empirical reliability.
+                Structuring the intermediate state ensures strict traceability, replacing unverifiable "Zero Hallucination" claims with empirical, state-bound reliability.
               </p>
             </div>
 
