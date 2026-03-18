@@ -1,0 +1,71 @@
+@import "tailwindcss";
+@plugin "@tailwindcss/typography";
+@layer utilities {
+  .clip-path-slant {
+    clip-path: polygon(0 0, 100% 0, 100% calc(100% - 20px), 0 100%);
+  }
+}
+
+/* Contextual Blindness (Flatland Structure Mode) */
+
+/* 1. Global Font and Base Theme */
+.context-blind {
+  font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, "Liberation Mono", "Courier New", monospace !important;
+  background-color: #020617 !important; /* Slate 950 */
+  color: #10b981 !important; /* Emerald 500 */
+}
+
+/* 2. Strip all background colors from child elements so the wireframe shows through */
+.context-blind [class*="bg-"] {
+  background-color: transparent !important;
+  background-image: none !important;
+}
+
+/* 3. Strip borders, shadows, and rounded corners, forcing a wireframe look */
+.context-blind * {
+  border-radius: 0 !important;
+  box-shadow: none !important;
+  border-color: #064e3b !important; /* Emerald 900 */
+}
+
+/* 4. Force text color, but exclude SVGs so we don't break fills improperly */
+.context-blind *:not(svg):not(path) {
+  color: #10b981 !important; 
+}
+
+/* 5. Draw structural outlines ONLY on major layout containers */
+.context-blind section, 
+.context-blind article,
+.context-blind header,
+.context-blind footer,
+.context-blind nav,
+.context-blind main,
+.context-blind aside {
+  outline: 1px solid #064e3b !important;
+  outline-offset: -1px;
+}
+
+/* Draw a faint outline on all divs to give the grid feel, but keep it very subtle */
+.context-blind div {
+  outline: 1px solid rgba(6, 78, 59, 0.3) !important; 
+  outline-offset: -1px;
+}
+
+/* 6. Wireframe media */
+.context-blind img, 
+.context-blind svg,
+.context-blind canvas,
+.context-blind video {
+  filter: grayscale(100%) contrast(120%) opacity(0.5) !important;
+  mix-blend-mode: luminosity !important;
+}
+
+/* Override the toggle button so it remains fully readable */
+.context-blind .context-blind-btn {
+  background-color: #10b981 !important;
+  color: #020617 !important;
+  font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace !important;
+  font-weight: 700 !important;
+  border: 1px solid #10b981 !important;
+  outline: none !important;
+}
